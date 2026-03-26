@@ -91,11 +91,35 @@ class ContextStrategy:
         ]
 
 
+@dataclass(frozen=True)
+class ExpertStrategy:
+    """Expert strategy optimized for CLIP text encoder.
+
+    This strategy uses enhanced visual feature descriptions (color, texture, shape)
+    that are optimized for CLIP's visual encoding capabilities.
+
+    Example: "deep dark longitudinal structural crack on brown timber surface"
+    """
+
+    def name(self) -> str:
+        return "expert"
+
+    def generate(self) -> List[str]:
+        return [
+            "deep dark longitudinal structural crack on brown timber surface",
+            "spongy dark brown decayed rotten wood texture",
+            "cluster of tiny round black insect holes on wood",
+            "sharp cut, gouge marks, or deep scratches on timber",
+            "white or greenish fuzzy mold and mildew spots on wood",
+            "dark circular natural wood knot with concentric rings"
+        ]
+
+
 def get_strategy(name: str) -> PromptStrategy:
     """Get a strategy by name.
 
     Args:
-        name: Strategy name ('basic', 'detailed', or 'context')
+        name: Strategy name ('basic', 'detailed', 'context', or 'expert')
 
     Returns:
         PromptStrategy instance
@@ -107,6 +131,7 @@ def get_strategy(name: str) -> PromptStrategy:
         "basic": BasicStrategy(),
         "detailed": DetailedStrategy(),
         "context": ContextStrategy(),
+        "expert": ExpertStrategy(),
     }
 
     if name not in strategies:
@@ -121,4 +146,4 @@ def list_strategies() -> List[str]:
     Returns:
         List of strategy names
     """
-    return ["basic", "detailed", "context"]
+    return ["basic", "detailed", "context", "expert"]

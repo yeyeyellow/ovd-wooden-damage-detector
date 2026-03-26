@@ -5,7 +5,7 @@ to YOLO format and save them as label files.
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List
 from pathlib import Path
 
 
@@ -47,16 +47,12 @@ class LabelGenerationConfig:
         images_dir: Directory containing input images
         output_dir: Directory to save YOLO label files
         conf_threshold: Minimum confidence to keep a detection
-        image_width: Reference image width for normalization
-        image_height: Reference image height for normalization
         create_output_dir: Whether to create output directory if missing
     """
 
     images_dir: str
     output_dir: str
     conf_threshold: float = 0.25
-    image_width: int = 640
-    image_height: int = 640
     create_output_dir: bool = True
 
 
@@ -67,6 +63,8 @@ class PseudoLabelGenerator:
     1. Running OVD detection on images
     2. Converting results to YOLO format
     3. Saving label files
+
+    【优化】直接使用底层传递的归一化坐标，无需二次转换。
     """
 
     def __init__(self, model, config: LabelGenerationConfig = None):
@@ -89,39 +87,34 @@ class PseudoLabelGenerator:
     def generate_single(self, image_path: str) -> List[YOLOLabel]:
         """Generate YOLO labels for a single image.
 
+        【优化】直接使用底层传递上来的原生归一化数据，
+        无需调用 PIL 读取图片尺寸，也无需重复计算归一化坐标。
+
         Args:
             image_path: Path to input image
 
         Returns:
             List of YOLOLabel objects
         """
-        from .models.base_ovd import BoundingBox
-
-        # Get actual image size
-        img_width, img_height = get_image_size(image_path)
-
         # Run OVD detection
         result = self.model.predict(image_path)
 
-        # Convert to YOLO format
+        # 【性能优化】直接使用底层传递的归一化坐标
+        # 底层 YOLOE 现在直接返回: x1=x_center, y1=y_center, x2=width, y2=height
+        # 这些值已经是归一化的 [0, 1]，可以直接使用
         labels = []
         for box in result.boxes:
             # Filter by confidence
             if box.confidence < self.config.conf_threshold:
                 continue
 
-            # Convert to YOLO format
-            x_center, y_center, width, height = bbox_to_yolo(
-                box.x1, box.y1, box.x2, box.y2,
-                img_width, img_height
-            )
-
+            # 直接使用底层传递的原生归一化数据
             labels.append(YOLOLabel(
                 class_id=box.class_id,
-                x_center=x_center,
-                y_center=y_center,
-                width=width,
-                height=height
+                x_center=box.x1,     # 归一化的中心 x
+                y_center=box.y1,     # 归一化的中心 y
+                width=box.x2,        # 归一化的宽度
+                height=box.y2        # 归一化的高度
             ))
 
         return labels
@@ -209,54 +202,3 @@ class PseudoLabelGenerator:
                 f.write(label.to_yolo_string() + "\n")
 
         return label_path
-
-
-def bbox_to_yolo(
-    x1: float, y1: float, x2: float, y2: float,
-    img_width: int, img_height: int
-) -> Tuple[float, float, float, float]:
-    """Convert bounding box to YOLO format.
-
-    Args:
-        x1, y1: Top-left corner coordinates
-        x2, y2: Bottom-right corner coordinates
-        img_width: Image width
-        img_height: Image height
-
-    Returns:
-        Tuple of (x_center, y_center, width, height) normalized to [0, 1]
-    """
-    # Calculate center and size
-    width = x2 - x1
-    height = y2 - y1
-    x_center = x1 + width / 2
-    y_center = y1 + height / 2
-
-    # Normalize to [0, 1]
-    x_center /= img_width
-    y_center /= img_height
-    width /= img_width
-    height /= img_height
-
-    # Clamp to [0, 1]
-    x_center = max(0, min(1, x_center))
-    y_center = max(0, min(1, y_center))
-    width = max(0, min(1, width))
-    height = max(0, min(1, height))
-
-    return x_center, y_center, width, height
-
-
-def get_image_size(image_path: str) -> Tuple[int, int]:
-    """Get image dimensions.
-
-    Args:
-        image_path: Path to image file
-
-    Returns:
-        Tuple of (width, height)
-    """
-    from PIL import Image
-
-    with Image.open(image_path) as img:
-        return img.size

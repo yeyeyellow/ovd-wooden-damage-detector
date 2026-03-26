@@ -77,14 +77,14 @@ Examples:
     )
     gen_parser.add_argument(
         "--device",
-        default="cpu",
-        help="Device to run on (default: cpu)"
+        default="0",
+        help="Device to run on (default: 0 for GPU)"
     )
     gen_parser.add_argument(
         "--strategy", "-s",
-        choices=["basic", "detailed", "context"],
-        default="detailed",
-        help="Prompt strategy (default: detailed)"
+        choices=["basic", "detailed", "context", "expert"],
+        default="expert",
+        help="Prompt strategy (default: expert)"
     )
     gen_parser.add_argument(
         "--custom-prompts",

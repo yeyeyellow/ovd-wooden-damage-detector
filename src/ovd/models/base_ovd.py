@@ -32,41 +32,56 @@ class OVDConfig:
 class BoundingBox:
     """A single bounding box detection.
 
+    【重要】字段含义已优化：
+    - x1: 归一化的中心 x 坐标 (x_center, 0-1)
+    - y1: 归一化的中心 y 坐标 (y_center, 0-1)
+    - x2: 归一化的宽度 (width, 0-1)
+    - y2: 归一化的高度 (height, 0-1)
+
+    这样可以直接存储 YOLO 格式的归一化坐标，上层直接使用无需转换。
+
     Attributes:
-        x1, y1: Top-left corner coordinates
-        x2, y2: Bottom-right corner coordinates
+        x1: Normalized center x coordinate (0-1)
+        y1: Normalized center y coordinate (0-1)
+        x2: Normalized width (0-1)
+        y2: Normalized height (0-1)
         class_id: Class index (0-based)
         confidence: Detection confidence score (0-1)
         class_name: Human-readable class name
     """
 
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+    x1: float  # x_center (normalized)
+    y1: float  # y_center (normalized)
+    x2: float  # width (normalized)
+    y2: float  # height (normalized)
     class_id: int
     confidence: float
     class_name: str
 
     @property
+    def x_center(self) -> float:
+        """Normalized center x coordinate."""
+        return self.x1
+
+    @property
+    def y_center(self) -> float:
+        """Normalized center y coordinate."""
+        return self.y1
+
+    @property
     def width(self) -> float:
-        """Width of the bounding box."""
-        return self.x2 - self.x1
+        """Normalized width."""
+        return self.x2
 
     @property
     def height(self) -> float:
-        """Height of the bounding box."""
-        return self.y2 - self.y1
+        """Normalized height."""
+        return self.y2
 
     @property
     def area(self) -> float:
-        """Area of the bounding box."""
+        """Normalized area."""
         return self.width * self.height
-
-    @property
-    def center(self) -> tuple:
-        """Center point (x, y) of the bounding box."""
-        return ((self.x1 + self.x2) / 2, (self.y1 + self.y2) / 2)
 
 
 @dataclass
@@ -75,7 +90,7 @@ class DetectionResult:
 
     Attributes:
         image_path: Path to the input image
-        boxes: List of detected bounding boxes
+        boxes: List of detected bounding boxes (with normalized YOLO format)
         inference_time: Time taken for inference in seconds
     """
 

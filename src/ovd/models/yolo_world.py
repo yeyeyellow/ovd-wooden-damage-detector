@@ -86,86 +86,54 @@ class YOLOEModel(BaseOVDModel):
             except Exception:
                 pass  # Model may not support set_classes yet
 
-        import torch
-
-        # Run inference
+        # Run inference with OOM prevention parameters
         start_time = time.time()
 
-        try:
-            # Use segmentation predictor if available
-            from ultralytics.models.yolo.yolo.yoloe import YOLOEVPSegPredictor
-
-            results = self._model.predict(
-                source=image_path,
-                conf=self.config.conf_threshold,
-                iou=self.config.iou_threshold,
-                max_det=self.config.max_detections,
-                device=self.config.device,
-                predictor=YOLOEVPSegPredictor,
-                stream=False,
-            )
-        except Exception:
-            # Fallback to standard predictor
-            results = self._model.predict(
-                source=image_path,
-                conf=self.config.conf_threshold,
-                iou=self.config.iou_threshold,
-                max_det=self.config.max_detections,
-                device=self.config.device,
-                stream=False,
-            )
+        # 【防爆显存】：强制注入 half=True 和 imgsz=640 防止 8GB 显卡 OOM
+        results = self._model.predict(
+            source=image_path,
+            conf=self.config.conf_threshold,
+            iou=self.config.iou_threshold,
+            device=self.config.device,
+            half=True,      # FP16 推理，节省显存
+            imgsz=640,      # 限制输入尺寸，防止 OOM
+            verbose=False,  # 安静模式
+        )
 
         inference_time = time.time() - start_time
 
-        # Parse results
-        boxes = self._parse_results(results)
+        # Parse results using native normalized coordinates
+        boxes = []
+        result = results[0]
+
+        if hasattr(result, 'boxes') and result.boxes is not None:
+            for i in range(len(result.boxes)):
+                box_obj = result.boxes[i]
+                # 【性能优化】：直接提取 Ultralytics 原生的高效归一化坐标 xywhn
+                # 避免二次转换，直接使用原生的 normalized xywh 格式
+                x_c, y_c, w, h = box_obj.xywhn[0].tolist()
+                conf = float(box_obj.conf[0])
+                cls_id = int(box_obj.cls[0])
+                class_name = self._get_class_name(cls_id, result)
+
+                # 将原生归一化坐标直接塞入对象
+                # 注意：这里 x1=x_center, y1=y_center, x2=width, y2=height
+                # 因为坐标已经是归一化的，上层可以直接使用
+                boxes.append(BoundingBox(
+                    x1=x_c,      # 归一化的中心 x
+                    y1=y_c,      # 归一化的中心 y
+                    x2=w,        # 归一化的宽度
+                    y2=h,        # 归一化的高度
+                    class_id=cls_id,
+                    confidence=conf,
+                    class_name=class_name
+                ))
 
         return DetectionResult(
             image_path=image_path,
             boxes=boxes,
             inference_time=inference_time,
         )
-
-    def _parse_results(self, results) -> List[BoundingBox]:
-        """Parse YOLOE results into BoundingBox objects.
-
-        Args:
-            results: Raw results from YOLOE model
-
-        Returns:
-            List of BoundingBox objects
-        """
-        import torch
-
-        boxes = []
-
-        for result in results:
-            # result.boxes.data is a tensor with shape [N, 6]
-            # columns: x1, y1, x2, y2, confidence, class_id
-            if hasattr(result, 'boxes') and result.boxes is not None:
-                box_data = result.boxes.data
-
-                # Convert to numpy if tensor
-                if isinstance(box_data, torch.Tensor):
-                    box_data = box_data.cpu().numpy()
-
-                for row in box_data:
-                    x1, y1, x2, y2, conf, cls_id = row
-
-                    # Get class name from model names if available
-                    class_name = self._get_class_name(int(cls_id), result)
-
-                    boxes.append(BoundingBox(
-                        x1=float(x1),
-                        y1=float(y1),
-                        x2=float(x2),
-                        y2=float(y2),
-                        class_id=int(cls_id),
-                        confidence=float(conf),
-                        class_name=class_name,
-                    ))
-
-        return boxes
 
     def _get_class_name(self, class_id: int, result) -> str:
         """Get the class name for a given class ID.
