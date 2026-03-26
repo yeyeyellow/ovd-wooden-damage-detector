@@ -1,0 +1,20 @@
+[project]
+name = "ovd-wooden-damage-detector"
+version = "0.1.0"
+description = "Open-Vocabulary Detection for wooden building damage"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "ultralytics>=8.0.0",
+    "pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
